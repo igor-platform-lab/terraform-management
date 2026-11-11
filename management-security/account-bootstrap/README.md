@@ -2,21 +2,17 @@
 
 O fluxo escolhido usa [`bootstrap/main.tf`](../../bootstrap/README.md). Este diretório é uma alternativa preservada e não deve ser executado junto com o bootstrap escolhido para criar os mesmos recursos. As instruções abaixo documentam apenas o uso independente da alternativa.
 
+Em uma instalação do zero, primeiro é necessário criar a conta AWS de management e obter credenciais. O fluxo escolhido executa `bootstrap/` nessa conta; **não há execução posterior obrigatória de `account-bootstrap/`**. As contas Audit e Log Archive são declaradas pelo `bootstrap/`; contas de workloads são criadas depois pelo Account Factory. Consulte a [ordem completa e os bloqueios atuais](../../bootstrap/README.md#por-onde-começar-se-nenhuma-conta-existe).
+
 Este root fica dentro de [management-security](../README.md) e prepara somente a management account. As contas de workloads serão criadas pelo Account Factory com o blueprint. Por ser um subdiretório, ele tem execução e estado próprios; não é executado pelo Terraform do diretório pai.
 
-Este root aplica o módulo [account_baseline](../../modules/account_baseline) na management account existente. Cria bucket de estado, provider OIDC do GitHub e role de deploy. Não cria contas, Organizations, Control Tower, SCPs ou IAM Identity Center.
+Este root chama `../../modules/account_baseline` para criar bucket de estado, provider OIDC do GitHub e role de deploy na conta indicada pelas credenciais. O caminho do módulo não existe neste checkout: a origem remota e o contrato precisam ser confirmados antes da execução. Não cria contas, Organizations, Control Tower, SCPs ou IAM Identity Center.
 
 ## Primeira execução
 
 Use Terraform e um profile com acesso administrativo à conta de destino. Para um profile configurado com IAM Identity Center, autentique com `aws sso login --profile terraform-management`.
 
-Copie o exemplo, preencha o profile da conta, o nome globalmente único do bucket e o subject exato do GitHub:
-
-```bash
-cp environments/management-security/account-bootstrap.tfvars.example environments/management-security/account-bootstrap.tfvars
-```
-
-O exemplo concede `AdministratorAccess` explicitamente, reproduzindo o bootstrap original. Isso dá permissões administrativas amplas ao GitHub na conta. Escolha as policies adequadas ao seu deployment; o módulo não possui uma policy padrão. Os ARNs informados devem existir.
+O exemplo `environments/management-security/account-bootstrap.tfvars.example` citado anteriormente não existe neste checkout. Para executar a alternativa, depois de resolver o módulo, crie um arquivo de variáveis local com os inputs descritos abaixo, incluindo profile, bucket, subjects e policies. `AdministratorAccess` concede permissões administrativas amplas; escolha explicitamente as policies adequadas. Os ARNs informados devem existir.
 
 Depois de preencher o arquivo, execute a partir da raiz `Terraform/`:
 
@@ -76,4 +72,4 @@ Referências: [backend local](https://developer.hashicorp.com/terraform/language
 | `github_subjects` | `set(string)` | Obrigatório; subjects exatos. |
 | `github_policy_arns` | `set(string)` | Obrigatório; policies explícitas. |
 
-Outputs: `state_bucket_name`, `github_role_arn` e `github_oidc_provider_arn`. O contrato interno e as limitações do módulo estão no [catálogo account_baseline](../../README.md#account_baseline). Provider AWS `~> 6.0`; credenciais determinam a conta de destino.
+Outputs declarados: `state_bucket_name`, `github_role_arn` e `github_oidc_provider_arn`. A compatibilidade desses outputs e dos inputs com o módulo remoto ainda precisa ser verificada. Provider AWS `~> 6.0`; credenciais determinam a conta de destino.

@@ -1,6 +1,6 @@
-# Landing zone, blueprints e SSO na management account
+# Landing zone e blueprints na management account
 
-A preparação inicial usa [`bootstrap/main.tf`](../bootstrap/README.md). Este root publica o blueprint `account-baseline` na management account, que também será o hub dos blueprints neste projeto pessoal. A landing zone é declarada em `10_controltower.tf`. A criação das contas de workloads é feita pelo console do Account Factory. O root também declara permission sets e atribuições no IAM Identity Center existente.
+A preparação inicial usa [`bootstrap/main.tf`](../bootstrap/README.md). Este root publica o blueprint `account-baseline` na management account, que também será o hub dos blueprints neste projeto pessoal. A landing zone é declarada em `10_controltower.tf`. A criação das contas de workloads é feita pelo console do Account Factory. Este root não declara permission sets nem atribuições no IAM Identity Center.
 
 ## Arquivos
 
@@ -13,7 +13,6 @@ A preparação inicial usa [`bootstrap/main.tf`](../bootstrap/README.md). Este r
 | `20_account_factory.tf` | Bucket de templates, upload, produto do Service Catalog e role de acesso. |
 | `00_outputs.tf` | ID do hub, produto, versão e ARN da role. |
 | `templates/account-baseline.yaml` | Recursos CloudFormation a criar nas novas contas. |
-| `30_permission_set.tf` | Chamada do módulo de permission set administrativo e atribuição a usuário/conta. |
 | `10_controltower.tf` | Landing zone 4.0 com o manifest `../landing-zone.json`. |
 | `account-bootstrap/` | Alternativa preservada, fora do fluxo escolhido; possui estado e execução separados. |
 
@@ -47,7 +46,7 @@ terraform -chdir=management-security apply -var-file=../environments/management-
 terraform -chdir=management-security output
 ```
 
-O profile do provider não configura a autenticação do backend; `AWS_PROFILE` no exemplo atende ao backend também. O apply inclui a landing zone, a publicação do blueprint e os recursos de permission set/assignments; não cria contas de workloads nem aplica o template na management account. Conclua os pré-requisitos da landing zone e confira os destinos do permission set descritos abaixo antes de executar esses comandos.
+O profile do provider não configura a autenticação do backend; `AWS_PROFILE` no exemplo atende ao backend também. O apply inclui a landing zone e a publicação do blueprint; não cria contas de workloads nem aplica o template na management account. Conclua os pré-requisitos da landing zone antes de executar esses comandos. Se o permission set anteriormente declarado estiver no state, sua remoção da configuração fará o Terraform propor a exclusão dos recursos associados; confira o plan antes do apply.
 
 ## Uso no console
 
@@ -106,14 +105,14 @@ Na versão 4.0, Config e CloudTrail usam recursos dedicados separados. No desenh
 
 Não há um recurso separado de criação de contas do Account Factory neste fluxo: Terraform declara a landing zone e publica o produto; o provisionamento das contas usa o console. OUs do Organizations, registro no Control Tower, baseline do Control Tower e blueprint pessoal são conceitos distintos. Não existem SCPs customizadas, GuardDuty, Security Hub ou alertas centrais declarados neste root.
 
-`accessManagement.enabled = true` não configura o Entra ID. A integração Entra por SAML/SCIM não é declarada no código e não foi confirmada nesta revisão. Permission sets e assignments agora estão declarados em `30_permission_set.tf`. OIDC do GitHub é autenticação de automação e não substitui o Identity Center de acesso humano.
+`accessManagement.enabled = true` não configura o Entra ID. A integração Entra por SAML/SCIM não é declarada no código e não foi confirmada nesta revisão. O root não declara permission sets nem assignments. OIDC do GitHub é autenticação de automação e não substitui o Identity Center de acesso humano.
 
 
-## SSO e permission sets
+## Histórico de SSO e permission sets
 
-Atualização de 20/09/2026: o usuário informa que já possui SSO pelo IAM Identity Center. A instância existente é `arn:aws:sso:::instance/ssoins-66846c4ac9b86c19`; o módulo não a cria. Não foi feita consulta à AWS para verificar a implantação do novo permission set, os assignments ou o provedor externo de identidades.
+Atualização de 20/09/2026: o usuário informa que já possui SSO pelo IAM Identity Center. A instância existente é `arn:aws:sso:::instance/ssoins-66846c4ac9b86c19`; o módulo não a cria. Não foi feita consulta à AWS para verificar a implantação do permission set, os assignments ou o provedor externo de identidades.
 
-A chamada `module.permission_set_adm`, em `30_permission_set.tf`, declara:
+A chamada `module.permission_set_adm`, anteriormente em `30_permission_set.tf`, foi removida da configuração. Ela declarava:
 
 | Campo | Configuração atual |
 | --- | --- |
@@ -124,11 +123,11 @@ A chamada `module.permission_set_adm`, em `30_permission_set.tf`, declara:
 | Sessão | Duas horas (`PT2H`), fixas no módulo. |
 | Inline policy | Não informada; nenhum recurso de inline é criado. |
 
-A configuração declara um permission set, uma associação de managed policy e uma atribuição de acesso. `AdministratorAccess` concede administração ampla, sujeita aos limites aplicáveis da organização. O nome precisa ter 1 a 32 caracteres e não aceita espaços; o valor atual atende a esse formato. Referência: [CreatePermissionSet](https://docs.aws.amazon.com/singlesignon/latest/APIReference/API_CreatePermissionSet.html).
+A configuração anterior declarava um permission set, uma associação de managed policy e uma atribuição de acesso. `AdministratorAccess` concede administração ampla, sujeita aos limites aplicáveis da organização. O nome precisa ter 1 a 32 caracteres e não aceita espaços; o valor anterior atende a esse formato. Referência: [CreatePermissionSet](https://docs.aws.amazon.com/singlesignon/latest/APIReference/API_CreatePermissionSet.html).
 
 O módulo permite vários ARNs de policies gerenciadas pela AWS e uma inline JSON opcional; aceita ambos. Cada usuário ou grupo informado recebe acesso a todas as contas da chamada. IDs são do Identity Center, não IDs do Entra. O ARN da instância permanece fixo no módulo e o provider deve usar a região correspondente.
 
-Contrato, exemplo e limitações: [`permission_set`](../README.md#permission_set). A validação entre variáveis exige Terraform >= 1.9. O módulo não exporta outputs, não cria identidades/contas e não configura federação SAML/SCIM ou acesso ao EKS. A presença do SSO não confirma esses componentes adicionais. O workflow existente executa apenas `live/`, portanto não aplica este root.
+A validação entre variáveis exige Terraform >= 1.9. O módulo não exporta outputs, não cria identidades/contas e não configura federação SAML/SCIM ou acesso ao EKS. A presença do SSO não confirma esses componentes adicionais.
 
 ### Validação local em 20/09/2026
 

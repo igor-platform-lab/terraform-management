@@ -2,6 +2,29 @@
 
 O fluxo escolhido usa [main.tf](main.tf) para preparar a management account antes da landing zone. Executar Terraform neste diretório carrega todos os seus arquivos `.tf`; `main.tf` não é executado isoladamente. Esta documentação descreve o código em 13/09/2026, sem afirmar que os recursos já existem na AWS.
 
+## Por onde começar se nenhuma conta existe
+
+O Terraform precisa de uma conta AWS e de credenciais antes de criar qualquer recurso. Primeiro crie uma conta AWS para ser a futura **management account** e configure acesso administrativo inicial seguro. Não é necessário ter IAM Identity Center para iniciar. Confirme a identidade e o ID com `aws sts get-caller-identity --profile terraform-management`; o comando não cria recursos.
+
+A ordem pretendida depois da criação da management account é:
+
+1. **`bootstrap/`**: usando credenciais da management, criar Organizations, OUs, contas Audit e Log Archive, bucket de state e acesso OIDC do GitHub. O backend deste root começa local.
+2. **Preparação da landing zone**: obter os IDs das contas criadas, preencher o manifest e o backend S3 do próximo root e providenciar os pré-requisitos ainda ausentes descritos adiante.
+3. **`management-security/`**: inicializar seu backend S3 separado e, quando os pré-requisitos estiverem resolvidos, criar a landing zone e publicar o blueprint do Account Factory.
+4. **Account Factory**: registrar e preparar as OUs necessárias no Control Tower e criar as contas de workloads pelo console, selecionando o blueprint. Elas recebem bucket e acesso GitHub pelo CloudFormation.
+
+`management-security/account-bootstrap/` **não é o passo 2**. É um root alternativo, com state próprio, que prepara somente bucket e acesso GitHub em uma conta existente; não cria a organização nem as contas Audit e Log Archive. No fluxo escolhido, não o execute junto com `bootstrap/` na management para criar os mesmos objetos. Veja [a comparação e o uso independente](../management-security/account-bootstrap/README.md).
+
+### O que impede a execução imediata
+
+- `bootstrap/main.tf` referencia `../modules/s3`, mas `modules/` não existe neste checkout. É necessário disponibilizar o módulo correto e ajustar sua origem antes de `terraform init`; a URL, o caminho e a versão no outro repositório ainda precisam ser confirmados.
+- O mesmo problema ocorre em `management-security/20_account_factory.tf`, para o módulo `s3`, e na alternativa `account-bootstrap/`, para `account_baseline`.
+- `landing-zone.json` ainda contém placeholders para IDs das contas Audit e Log Archive. As roles de serviço do Control Tower necessárias para criação via API não são declaradas aqui. A role `AWSControlTowerAdmin` precisa existir antes da trust policy do blueprint; a dependência correspondente também precisa ser resolvida. Os detalhes estão no [guia da management](../management-security/README.md).
+- O backend da management ainda usa o placeholder `meu-bucket-tfstate`. O exemplo do operador do blueprint também precisa ser preenchido. A landing zone e o blueprint estão no mesmo root: não presuma que executar esse root por etapas resolverá as dependências ausentes.
+- O `bootstrap/` assume que os objetos declarados não estão em conflito com recursos existentes. Se houver organização, OIDC, bucket ou outros recursos preexistentes, avalie importação e propriedade antes de aplicar. Uma conta nova não impede conflitos de nomes globais de bucket.
+
+Estes itens descrevem trabalho pendente. Não foi consultada a AWS nem confirmado que os módulos remotos têm o mesmo contrato dos locais.
+
 ## Recursos e responsabilidade
 
 | Declaração | Comportamento |
@@ -49,16 +72,17 @@ log_archive_account_email = "<EMAIL_LOG_ARCHIVE>"
 localstack_enabled        = false
 ```
 
-A partir da raiz `Terraform/`, com os valores reais preenchidos:
+A partir da raiz deste repositório, somente depois de resolver a referência do módulo e preencher os valores reais:
 
 ```bash
 export AWS_PROFILE=terraform-management
 terraform -chdir=bootstrap init
+terraform -chdir=bootstrap validate
 terraform -chdir=bootstrap plan -var-file=bootstrap.tfvars -out=bootstrap.tfplan
 terraform -chdir=bootstrap apply bootstrap.tfplan
 ```
 
-`bootstrap.tfvars` não é carregado automaticamente pelo nome; o comando o informa explicitamente. Para profile SSO, o login deve estar válido antes da execução. O provider não fixa uma versão do AWS provider neste root; o lockfile registra a versão selecionada.
+`bootstrap.tfvars` não é carregado automaticamente pelo nome; o comando o informa explicitamente. Confira a conta retornada pelo STS, gere um plan novo, revise todos os recursos e só então aplique esse arquivo. Não reutilize um `bootstrap.tfplan` antigo. Para profile SSO, o login deve estar válido antes da execução. O provider não fixa uma versão do AWS provider neste root; o lockfile registra a versão selecionada.
 
 O backend atual é local implícito (`bootstrap/terraform.tfstate`). Criar um bucket não migra o próprio estado. Preserve estado e backup fora do Git, pois este estado também controla a organização e as contas compartilhadas. Não reutilize esse estado para `management-security/` ou `live/`.
 
