@@ -21,7 +21,7 @@ provider "aws" {
 }
 
 module "s3_terraform_state" {
-  source = "../modules/s3"
+  source = "git::https://github.com/igor-platform-lab/terraform-modules.git//modules/s3?ref=55c042f2753c907bf01cda102eea8a33756d2a39"
   region = var.aws_region
   bucket = var.state_bucket_name
   status = "Enabled"
