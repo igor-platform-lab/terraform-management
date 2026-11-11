@@ -17,13 +17,15 @@ A ordem pretendida depois da criação da management account é:
 
 ### O que impede a execução imediata
 
-- `bootstrap/main.tf` referencia `../modules/s3`, mas `modules/` não existe neste checkout. É necessário disponibilizar o módulo correto e ajustar sua origem antes de `terraform init`; a URL, o caminho e a versão no outro repositório ainda precisam ser confirmados.
-- O mesmo problema ocorre em `management-security/20_account_factory.tf`, para o módulo `s3`, e na alternativa `account-bootstrap/`, para `account_baseline`.
 - `landing-zone.json` ainda contém placeholders para IDs das contas Audit e Log Archive. As roles de serviço do Control Tower necessárias para criação via API não são declaradas aqui. A role `AWSControlTowerAdmin` precisa existir antes da trust policy do blueprint; a dependência correspondente também precisa ser resolvida. Os detalhes estão no [guia da management](../management-security/README.md).
 - O backend da management ainda usa o placeholder `meu-bucket-tfstate`. O exemplo do operador do blueprint também precisa ser preenchido. A landing zone e o blueprint estão no mesmo root: não presuma que executar esse root por etapas resolverá as dependências ausentes.
 - O `bootstrap/` assume que os objetos declarados não estão em conflito com recursos existentes. Se houver organização, OIDC, bucket ou outros recursos preexistentes, avalie importação e propriedade antes de aplicar. Uma conta nova não impede conflitos de nomes globais de bucket.
 
-Estes itens descrevem trabalho pendente. Não foi consultada a AWS nem confirmado que os módulos remotos têm o mesmo contrato dos locais.
+Estes itens descrevem trabalho pendente. A implantação na AWS ainda precisa ser verificada.
+
+## Origem do módulo S3
+
+O bootstrap usa [`modules/s3`](https://github.com/igor-platform-lab/terraform-modules/tree/55c042f2753c907bf01cda102eea8a33756d2a39/modules/s3) do repositório compartilhado, com revisão fixa em `source`. Configure credenciais Git de leitura antes do `terraform init` se o repositório for privado. Use as credenciais AWS da management para provisionar os recursos.
 
 ## Recursos e responsabilidade
 
@@ -72,7 +74,7 @@ log_archive_account_email = "<EMAIL_LOG_ARCHIVE>"
 localstack_enabled        = false
 ```
 
-A partir da raiz deste repositório, somente depois de resolver a referência do módulo e preencher os valores reais:
+A partir da raiz deste repositório, depois de configurar o acesso Git e preencher os valores reais:
 
 ```bash
 export AWS_PROFILE=terraform-management

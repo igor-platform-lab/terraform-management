@@ -18,7 +18,7 @@ A preparação inicial usa [`bootstrap/main.tf`](../bootstrap/README.md). Este r
 
 ## O que fica na management account
 
-- Bucket privado `controltower-blueprints-<ACCOUNT_ID>-<REGION>`, versionado e com SSE-S3, usando o módulo `s3`.
+- Bucket privado `controltower-blueprints-<ACCOUNT_ID>-<REGION>`, versionado e com SSE-S3, usando o [módulo `s3`](https://github.com/igor-platform-lab/terraform-modules/tree/55c042f2753c907bf01cda102eea8a33756d2a39/modules/s3) via Git, com revisão fixa.
 - Template YAML armazenado no bucket e produto `account-baseline` do tipo `CLOUD_FORMATION_TEMPLATE`.
 - Role `AWSControlTowerBlueprintAccess`, com `AWSServiceCatalogAdminFullAccess` e `AmazonS3ReadOnlyAccess`.
 
@@ -28,9 +28,11 @@ O Control Tower cria e compartilha o portfólio necessário durante o fluxo AFC;
 
 ## Publicação
 
+Para instalar o módulo S3, `terraform init` precisa de acesso Git de leitura ao repositório compartilhado. Configure as credenciais do Git se o repositório for privado.
+
 O código da landing zone está presente, mas ainda faltam as roles de serviço exigidas pela criação via API e os IDs reais no manifest. A role `AWSControlTowerAdmin` precisa existir antes de criar a trust policy de `AWSControlTowerBlueprintAccess`; ao implementar as roles, declare as dependências Terraform correspondentes. O bucket do backend também precisa existir antes do init: ele é diferente do bucket de templates criado aqui. Substitua `meu-bucket-tfstate` em `environments/management-security/backend.hcl`.
 
-Na raiz `Terraform/`, copie e preencha o exemplo do operador:
+Na raiz `terraform-management/`, copie e preencha o exemplo do operador:
 
 ```bash
 cp environments/management-security/blueprints.tfvars.example environments/management-security/blueprints.tfvars
@@ -73,7 +75,7 @@ Associe previamente suas SCPs à OU no Organizations. As contas ficam sujeitas �
 
 A versão do produto usa um hash do YAML: mudar o template altera a versão publicada no próximo apply. Isso não atualiza automaticamente as contas existentes; atualize o blueprint dessas contas pelo Control Tower. Este root não mantém um catálogo explícito de todas as versões históricas.
 
-`bootstrap/main.tf` prepara a management no fluxo escolhido. `management-security/account-bootstrap/` permanece como alternativa, em estado separado. O módulo `modules/account_baseline/` permanece reutilizável; as contas criadas pelo Account Factory recebem os recursos pelo template. Não aplique ambos na mesma conta para criar os mesmos recursos. OIDC, role ou bucket preexistentes podem conflitar com o template.
+`bootstrap/main.tf` prepara a management no fluxo escolhido. `management-security/account-bootstrap/` permanece como alternativa, em estado separado. O [módulo `account_baseline`](https://github.com/igor-platform-lab/terraform-modules/tree/55c042f2753c907bf01cda102eea8a33756d2a39/modules/account_baseline) permanece reutilizável via Git; as contas criadas pelo Account Factory recebem os recursos pelo template. Não aplique ambos na mesma conta para criar os mesmos recursos. OIDC, role ou bucket preexistentes podem conflitar com o template.
 
 O `10_controltower.tf` está ativo e lê `../landing-zone.json` com `file()`. Nenhuma migração de state foi feita. O `bootstrap/` original também declara bucket e OIDC na management; não duplique a gestão desses objetos no subdiretório `account-bootstrap/`.
 
