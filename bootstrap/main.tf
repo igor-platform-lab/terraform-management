@@ -62,9 +62,7 @@ resource "aws_iam_role" "github_actions" {
         Condition = {
           StringEquals = {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          }
-          StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/${var.github_branch}"
+            "token.actions.githubusercontent.com:sub" = length(var.github_subjects) > 0 ? var.github_subjects : ["repo:${var.github_repository}:ref:refs/heads/${var.github_branch}"]
           }
         }
       }
@@ -112,4 +110,4 @@ resource "aws_organizations_account" "log_archive_account" {
   name      = "Log Archive"
   email     = var.log_archive_account_email
   parent_id = aws_organizations_organizational_unit.security.id
-} 
+}
