@@ -21,6 +21,12 @@ variable "github_branch" {
   default     = "main"
 }
 
+variable "github_subjects" {
+  type        = list(string)
+  description = "Subjects OIDC exatos; aceita o formato imutável do GitHub. Vazio mantém o subject de repository/branch."
+  default     = []
+}
+
 variable "localstack_enabled" {
   type    = bool
   default = false

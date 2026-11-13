@@ -30,7 +30,7 @@ O Control Tower cria e compartilha o portfólio necessário durante o fluxo AFC;
 
 Para instalar o módulo S3, `terraform init` precisa de acesso Git de leitura ao repositório compartilhado. Configure as credenciais do Git se o repositório for privado.
 
-O código da landing zone está presente, mas ainda faltam as roles de serviço exigidas pela criação via API e os IDs reais no manifest. A role `AWSControlTowerAdmin` precisa existir antes de criar a trust policy de `AWSControlTowerBlueprintAccess`; ao implementar as roles, declare as dependências Terraform correspondentes. O bucket do backend também precisa existir antes do init: ele é diferente do bucket de templates criado aqui. Substitua `meu-bucket-tfstate` em `environments/management-security/backend.hcl`.
+O código da landing zone está presente, mas ainda faltam as roles de serviço exigidas pela criação via API. Os IDs reais das contas foram preenchidos no manifest em 12/11/2026. A role `AWSControlTowerAdmin` precisa existir antes de criar a trust policy de `AWSControlTowerBlueprintAccess`; ao implementar as roles, declare as dependências Terraform correspondentes. O bucket do backend também precisa existir antes do init: ele é diferente do bucket de templates criado aqui. O backend `environments/management-security/backend.hcl` aponta para `platform-lab-eks-terraform`, com chave `management-security/terraform.tfstate` e lockfile S3 habilitado.
 
 Na raiz `terraform-management/`, copie e preencha o exemplo do operador:
 
@@ -99,7 +99,7 @@ Outputs: `blueprint_hub_account_id`, `blueprint_product_id`, `blueprint_version`
 
 `10_controltower.tf` está ativo com `version = "4.0"` e `manifest_json = file("${path.module}/../landing-zone.json")`. O caminho aponta para o JSON na raiz deste repositório, não para um arquivo dentro de `account-bootstrap/`.
 
-O manifest governa `us-east-2`, habilita Identity Center, logging, Config e security roles; desabilita Backup. Audit é o destino de Config/security roles e Log Archive é o destino de logging. Os buckets de logs e access logs têm retenção configurada em 365 dias, sem chave KMS personalizada. Os IDs ainda são placeholders. As contas de integração precisam estar na mesma OU diretamente sob a raiz. Veja [manifest 4.0](https://docs.aws.amazon.com/controltower/latest/userguide/lz-api-launch.html).
+O manifest governa `us-east-2`, habilita Identity Center, logging, Config e security roles; desabilita Backup. Audit é o destino de Config/security roles e Log Archive é o destino de logging. Os buckets de logs e access logs têm retenção configurada em 365 dias, sem chave KMS personalizada. Os IDs atuais são Log Archive `593400911863` e Audit `293521004133`, confirmados na AWS em 12/11/2026. As contas de integração precisam estar na mesma OU diretamente sob a raiz. Veja [manifest 4.0](https://docs.aws.amazon.com/controltower/latest/userguide/lz-api-launch.html).
 
 As roles de serviço `AWSControlTowerAdmin`, `AWSControlTowerCloudTrailRole` e `AWSControlTowerStackSetRole`, no path `/service-role/`, não são declaradas aqui nem no bootstrap. O guia genérico também cita a role de agregação antiga, mas ela não é necessária para landing zone 4.0. Referências: [pré-requisitos via API](https://docs.aws.amazon.com/controltower/latest/userguide/lz-api-prereques.html) e [diferença da role de Config em 4.0](https://docs.aws.amazon.com/controltower/latest/userguide/roles-how.html).
 
@@ -134,3 +134,55 @@ A validação entre variáveis exige Terraform >= 1.9. O módulo não exporta ou
 ### Validação local em 20/09/2026
 
 `terraform -chdir=management-security init -backend=false -input=false` concluiu usando o provider AWS `6.64.0` já instalado, conforme o lock file existente. `terraform -chdir=management-security validate -no-color` passou com Terraform `1.16.1`, incluindo o módulo `permission_set`. A inicialização não configurou o backend e não houve plan/apply ou consulta aos recursos AWS. A validação local não confirma que contas, identidades ou permissões estão corretas no serviço.
+
+## Workflow deste repositório — 12/11/2026
+
+`.github/workflows/terraform.yaml` executa exclusivamente `management-security/`, com Terraform `1.17.1`, na conta `058283627890` e região `us-east-2`. Não executa `bootstrap/` nem `account-bootstrap/`. Usa a role `TerraformManagement` via OIDC, com valores não sensíveis em repository Variables. O GitHub App fornece o token de leitura dos módulos privados. Não usa GitHub Environments.
+
+Pull requests do próprio repositório para `main` executam init, fmt, validate e plan com sessão limitada à policy `ReadOnlyAccess`, sem lock de escrita no estado. PRs de forks não recebem acesso AWS. Push em `main` gera um plano novo e aplica exatamente esse plano no mesmo job. Não há artifact compartilhado entre PR e push; o plano do PR serve para revisão e não é o aplicado após o merge. Uma concurrency group única serializa as execuções deste root.
+
+O workflow não carrega `.tfvars` locais ignorados pelo Git nem o profile `terraform-management`; usa as credenciais temporárias do runner e os defaults de região, ambiente e tags do provider. O operador do Account Factory é informado por `TF_VAR_control_tower_operator_arn`, alimentado pela variable `CONTROL_TOWER_OPERATOR_ARN = arn:aws:iam::058283627890:user/igor`, correspondente à identidade local consultada.
+
+O estado da management usa S3 e uma chave diferente do estado local do bootstrap. O manifest já contém os IDs das contas de integração. Não houve apply da landing zone nesta adaptação.
+
+### Bloqueios verificados nesta preparação
+
+O repositório compartilhado `terraform-modules` é privado: o token automático de um repositório não fornece acesso de leitura ao outro. O usuário escolheu manter as origens remotas e reutilizar seu GitHub App. O workflow gera um token de instalação limitado a Contents: read em terraform-modules; depende da disponibilidade de RELEASE_APP_PRIVATE_KEY no repositório da management. A instalação local de `config-v0.1.0` falhou em `depends_on = var.organization`; o caller também usa argumentos diferentes dos declarados pelo módulo. A execução completa de validate/plan da management permanece bloqueada por essa implementação.
+
+A consulta IAM na management não encontrou roles `AWSControlTower*`. As roles de serviço documentadas acima precisam ser providenciadas antes do apply da landing zone e do blueprint. A adaptação do workflow não as cria.
+
+### Alternativa anterior: token pessoal para os módulos privados
+
+Este procedimento registra a alternativa PAT preparada antes da escolha do GitHub App. O workflow atual usa o App, descrito na seção seguinte; não exige cadastrar MODULES_READ_TOKEN.
+
+No GitHub pessoal, abra Settings → Developer settings → Personal access tokens → Fine-grained tokens e crie um token com resource owner `igor-platform-lab`, acesso somente ao repositório `terraform-modules` e permissão de repositório **Contents: Read-only**. Se a organização exigir aprovação, aguarde sua liberação. Escolha uma expiração e substitua o secret quando renovar o token. Referência: [gerenciar personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
+
+No repositório `igor-platform-lab/terraform-management`, abra Settings → Secrets and variables → Actions → New repository secret. Use o nome `MODULES_READ_TOKEN` e cole o token no campo Secret. Na alternativa PAT, esse era o secret exigido para leitura dos módulos; o contrato atual do GitHub App está abaixo. O token é para leitura dos módulos no GitHub; AWS continua usando OIDC.
+
+Na alternativa PAT, o passo de init falhava com uma mensagem explícita se o secret estivesse ausente. A autorização Git fica em variáveis de ambiente limitadas ao processo de init, com header restrito à URL de `terraform-modules.git`; não é gravada na configuração Git. O checkout não persiste credenciais. O token real e a execução remota não foram testados nesta preparação. Os bloqueios do módulo Config e das roles Control Tower permanecem independentes desse acesso.
+
+### GitHub App e valores cadastrados no repositório
+
+O workflow atual usa actions/create-github-app-token v3 com a mesma revisão fixa do workflow de releases. Solicita token somente para terraform-modules, na organização igor-platform-lab, com Contents: read. O token gerado alimenta o init; não é um secret manual nem uma credencial AWS. O App precisa estar instalado com acesso ao repositório de módulos.
+
+As repository Variables abaixo foram cadastradas e relidas pela API em 12/11/2026:
+
+| Variable | Valor |
+| --- | --- |
+| RELEASE_APP_CLIENT_ID | 5519180, reutilizado da configuração de releases |
+| AWS_REGION | us-east-2 |
+| AWS_ACCOUNT_ID | 058283627890 |
+| AWS_ROLE_ARN | arn:aws:iam::058283627890:role/TerraformManagement |
+| TERRAFORM_VERSION | 1.17.1 |
+| CONTROL_TOWER_OPERATOR_ARN | arn:aws:iam::058283627890:user/igor |
+| BACKEND_CONFIG | ../environments/management-security/backend.hcl |
+
+O único secret exigido é RELEASE_APP_PRIVATE_KEY. Cadastre a chave privada do App em Settings → Secrets and variables → Actions → New repository secret de terraform-management. A captura fornecida pelo usuário confirma que o plano atual da organização permite organization secrets somente em repositórios públicos; terraform-management é privado, portanto o organization secret criado não está disponível para este workflow. O uso compartilhado por organization secret exigiria um plano que ofereça acesso a repositórios privados. O valor de um secret já existente em terraform-modules não pode ser lido e copiado pela API. Nenhum placeholder foi cadastrado como credencial.
+
+Foram validados YAML, scripts Bash e a limitação do token ao repositório de módulos com leitura. A chave privada não foi lida, transferida nem testada; a execução remota permanece pendente. Esta etapa não mudou roles, policies ou confiança OIDC na AWS. A discussão sobre separar as roles de PR e apply permanece pendente e não foi resolvida pelo cadastro das Variables.
+
+### Preparação do PR — 12/11/2026
+
+A entrega reúne o workflow da management, a autenticação de leitura dos módulos por GitHub App, os IDs reais das contas e o backend existente. Os planos binários e os estados locais ficam fora do commit. O secret de organização informado pelo usuário não atende ao repositório privado no plano atual; é necessário cadastrar RELEASE_APP_PRIVATE_KEY como repository secret antes de executar o workflow.
+
+A entrega ainda exige revisão antes de merge: a role administrativa aceita o subject de PR, com limitação ReadOnlyAccess solicitada apenas pelo workflow. O módulo Config bloqueia o init/validate da management, e faltam as roles do Control Tower para aplicar a landing zone. O PR documenta essas pendências e não representa confirmação de CI ou implantação. Nenhuma correção desses pontos foi incluída durante a preparação do commit.

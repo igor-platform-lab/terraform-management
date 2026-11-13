@@ -51,7 +51,8 @@ Todos estão em [variables.tf](variables.tf).
 | `aws_profile` | `string` | sim | Profile com acesso à management. |
 | `state_bucket_name` | `string` | sim | Nome globalmente único do bucket. |
 | `github_repository` | `string` | sim | Repositório no formato `OWNER/REPO`. |
-| `github_branch` | `string` | não | Branch autorizada; padrão `main`. |
+| `github_branch` | `string` | não | Branch autorizada quando `github_subjects` está vazio; padrão `main`. |
+| `github_subjects` | `list(string)` | não | Subjects exatos; padrão `[]`, que usa repository/branch. Aceita IDs imutáveis do GitHub. |
 | `audit_account_email` | `string` | sim | E-mail exclusivo para a conta Audit. |
 | `log_archive_account_email` | `string` | sim | E-mail exclusivo para a conta Log Archive. |
 | `localstack_enabled` | `bool` | não | Padrão `false`; deve permanecer falso no fluxo AWS escolhido. |
@@ -101,10 +102,26 @@ Uma eventual migração do próprio estado exige declarar o backend S3 e usar um
 
 ## Acesso GitHub e limites atuais
 
-A trust policy da role `TerraformManagement` exige audience STS e subject `repo:OWNER/REPO:ref:refs/heads/BRANCH`, comparado por `StringLike`. Jobs com GitHub Environment usam outro subject; portanto a role não é automaticamente compatível com os jobs dev/prod atuais. O bootstrap fixa um thumbprint, enquanto `account_baseline` e o blueprint não o fixam. As permissões administrativas são explícitas no código.
+A trust policy da role `TerraformManagement` exige audience STS e um subject exato, comparado por `StringEquals`. Sem `github_subjects`, usa `repo:OWNER/REPO:ref:refs/heads/BRANCH`. A configuração local vigente informa os subjects imutáveis de `igor-platform-lab/terraform-management` para `main` e pull requests; o workflow da management não usa GitHub Environment. Jobs com Environment exigiriam subjects diferentes. O bootstrap fixa um thumbprint, enquanto `account_baseline` e o blueprint não o fixam. As permissões administrativas são explícitas no código.
 
 O atributo `aws_service_access_principals` declara apenas Control Tower. Integrações posteriores podem habilitar outros serviços no Organizations; a gestão dessa lista precisa ser coerente com esses serviços para evitar que uma reaplicação remova trusted access. Referência: [Organizations no provider AWS](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/organizations_organization).
 
 LocalStack saiu do plano do projeto, mas suas opções permanecem no código. Os endpoints alternativos declarados aqui cobrem IAM/S3/STS, não Organizations.
 
 [management-security/account-bootstrap](../management-security/account-bootstrap/README.md) é uma alternativa preservada, fora do fluxo escolhido. Não execute os dois roots para gerir o mesmo bucket/OIDC. Nas novas contas de workloads, o dono dos recursos equivalentes é CloudFormation por meio do [blueprint AFC](../management-security/README.md).
+
+## Implantação confirmada — 12/11/2026
+
+O bootstrap está registrado no estado local com 12 recursos na management `058283627890`, organização `o-1lrm5qsjpv`, bucket `platform-lab-eks-terraform`, Audit `293521004133` e Log Archive `593400911863`. As duas contas foram consultadas na AWS como `ACTIVE`. Após perda do estado, 11 recursos existentes foram importados; a Audit foi criada depois pelo usuário. O estado ativo continua em `terraform.tfstate`, separado do backend S3 da management.
+
+A role `TerraformManagement` teve somente sua trust policy atualizada por Terraform para o novo repositório e os subjects imutáveis, sem recriação dos recursos. A configuração local usa:
+
+```hcl
+github_repository = "igor-platform-lab/terraform-management"
+github_subjects = [
+  "repo:igor-platform-lab@331069808/terraform-management@1382391570:ref:refs/heads/main",
+  "repo:igor-platform-lab@331069808/terraform-management@1382391570:pull_request",
+]
+```
+
+O prefixo e a opção de subjects imutáveis foram consultados na API do GitHub. A aplicação da trust policy foi confirmada; a autenticação em uma execução remota do workflow ainda não foi demonstrada.

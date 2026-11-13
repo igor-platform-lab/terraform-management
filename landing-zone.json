@@ -6,7 +6,7 @@
     "enabled": false
   },
   "centralizedLogging": {
-    "accountId": "<LOG_ARCHIVE_ACCOUNT_ID>",
+    "accountId": "593400911863",
     "enabled": true,
     "configurations": {
       "accessLoggingBucket": {
@@ -18,7 +18,7 @@
     }
   },
   "config": {
-    "accountId": "<AUDIT_ACCOUNT_ID>",
+    "accountId": "293521004133",
     "enabled": true,
     "configurations": {
       "accessLoggingBucket": {
@@ -34,6 +34,6 @@
   ],
   "securityRoles": {
     "enabled": true,
-    "accountId": "<AUDIT_ACCOUNT_ID>"
+    "accountId": "293521004133"
   }
 }
